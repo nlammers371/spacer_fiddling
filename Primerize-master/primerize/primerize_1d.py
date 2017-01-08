@@ -197,10 +197,10 @@ class Primerize_1D(thermo.Singleton):
 def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misprime_score_forward, misprime_score_reverse, Tm_precalculated):
     # could be zero, meaning user does not know.
     num_primer_sets = int(NUM_PRIMERS / 2)
-    num_primer_sets_max = int(math.ceil(N_BP / float(MIN_LENGTH)))
+    num_primer_sets_max = int(math.ceil(N_BP / float(MIN_LENGTH))) #NL: floor?
 
     misprime_score_weight = 10.0
-    MAX_SCORE = N_BP * 2 + 1
+    MAX_SCORE = N_BP * 2 + 1 #NL: max possible length penalty
     MAX_SCORE += misprime_score_weight * max(numpy.amax(misprime_score_forward), numpy.amax(misprime_score_reverse)) * 2 * num_primer_sets_max
 
     scores_start = MAX_SCORE * numpy.ones((N_BP, N_BP, num_primer_sets_max))
@@ -223,12 +223,12 @@ def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misp
     #
     for p in xrange(MIN_LENGTH, MAX_LENGTH + 1):
         # STOP[reverse](1)
-        q_min = max(1, p - MAX_LENGTH + 1)
+        q_min = max(1, p - MAX_LENGTH + 1) #NL: this is always going to equal 1
         q_max = p
 
         for q in xrange(q_min, q_max + 1):
-            if (Tm_precalculated[q - 1, p - 1] > MIN_TM):
-                scores_stop[p - 1, q - 1, 0] = (q - 1) + 2 * (p - q + 1)
+            if (Tm_precalculated[q - 1, p - 1] > MIN_TM): 
+                scores_stop[p - 1, q - 1, 0] = (q - 1) + 2 * (p - q + 1) #NL: length penalty
                 scores_stop[p - 1, q - 1, 0] += misprime_score_weight * (misprime_score_forward[0, p - 1] + misprime_score_reverse[0, q - 1])
 
     best_min_score = MAX_SCORE
@@ -242,7 +242,7 @@ def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misp
         #            <---------------------
         #            q                    N_BP
         #
-        for p in xrange(1, N_BP + 1):
+        for p in xrange(1, N_BP + 1): #NL: why not MIN_LENGTH?
             q_min = max(1, p - MAX_LENGTH + 1)
             q_max = p
 
@@ -254,10 +254,10 @@ def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misp
                     j = N_BP
                     last_primer_length = j - q + 1
                     if last_primer_length <= MAX_LENGTH and last_primer_length >= MIN_LENGTH:
-                        scores_final[p - 1, q - 1, n - 1] = scores_stop[p - 1, q - 1, n - 1] + (i - p - 1)
+                        scores_final[p - 1, q - 1, n - 1] = scores_stop[p - 1, q - 1, n - 1] + (i - p - 1) 
                         scores_final[p - 1, q - 1, n - 1] += misprime_score_weight * (misprime_score_forward[0, p - 1] + misprime_score_reverse[0, q - 1])
 
-        min_score = numpy.amin(scores_final[:, :, n - 1])
+        min_score = numpy.amin(scores_final[:, :, n - 1]) #best score of all enumerated sets containing n primers
         if (min_score < best_min_score or n == 1):
             best_min_score = min_score
             best_n = n
@@ -292,11 +292,11 @@ def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misp
 
                     for j in xrange(min_j, max_j + 1):
                         # start[reverse](2)
-                        min_i = max(p + 1, j - MAX_LENGTH + 1)
+                        min_i = max(p + 1, j - MAX_LENGTH + 1) #suspect this is redundant
                         max_i = j
 
                         for i in xrange(min_i, max_i + 1):
-                            # at some PCR starge thiw will be an endpoint!
+                            # at some PCR stage this will be an endpoint!
                             if (Tm_precalculated[i - 1, j - 1] > MIN_TM):
                                 potential_score = scores_stop[p - 1, q - 1, n - 2] + (i - p - 1) + 2 * (j - i + 1)
                                 if (potential_score < scores_start[i - 1, j - 1, n - 2]):
