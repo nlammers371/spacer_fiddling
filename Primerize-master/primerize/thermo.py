@@ -338,8 +338,8 @@ def _precalculate_Tm_multi(seq1, seq2, min_length=15, max_length=60, m=6):
     
     for i in xrange(N):
         
-         for j in xrange(i+2,N+1):
-            
+         for j in xrange(i+2,min(i+max_length,N+1)):
+
             IDs = []
             starts = []
             stops = []
@@ -350,6 +350,7 @@ def _precalculate_Tm_multi(seq1, seq2, min_length=15, max_length=60, m=6):
             keep = []
             
             ct = 0
+            #could be precalculated            
             for k in xrange(len(index_array[1,])):
                 
                 if ((index_array[0,k] < j) and (index_array[1,k] > i)):
@@ -377,16 +378,16 @@ def _precalculate_Tm_multi(seq1, seq2, min_length=15, max_length=60, m=6):
             else:
                 strings = ['']*len(IDs)
                 
-                for m in xrange(len(keep)):
-                    strings[keep_trk[m]] = keep_list[keep[m]]
-    
+                for n in xrange(len(keep)):
+                    strings[keep_trk[n]] = keep_list[keep[n]]
+                #for len(swap) swap segments, enumerate all possible unique combinations
                 s_rep = ["".join(seq) for seq in itertools.product("01", repeat=len(swap))]
-                for m in xrange(len(s_rep)):
-                    bin = s_rep[m]
-                    for n in xrange(len(swap)):
-                        ind = 2*(swap[n]) + int(bin[n])
+                for n in xrange(len(s_rep)):
+                    bin = s_rep[n]
+                    for o in xrange(len(swap)):
+                        ind = 2*(swap[o]) + int(bin[o])
                         swap_str = swap_list[ind]
-                        strings[swap_trk[n]] = swap_str
+                        strings[swap_trk[o]] = swap_str
                         
                     collapse = "".join(strings)
                     

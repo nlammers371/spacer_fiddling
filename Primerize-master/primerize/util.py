@@ -6,6 +6,8 @@ import numpy
 import os
 import re
 import xlwt
+"NL addition"
+import itertools
 
 from .thermo import calc_Tm
 
@@ -1109,19 +1111,18 @@ def _precalculate_seg_count(seq1,seq2,m=6):
     #store start, end, and swap ID of each segment
     index_array = numpy.zeros((3,len(cons_list)), dtype='int')
      
-    index_list.append((N))
-    
+    index_list.append(N)
     
     for i in xrange(len(cons_list)):
         
         index_array[0,i] = index_list[i] 
         index_array[1,i] = index_list[i+1]
-        index_array[2,i] = cons_list[i+1]        
+        index_array[2,i] = cons_list[i]        
         
     
     #array to track number of swap segments between any two points
     swap_mat = numpy.zeros((N,N),dtype='float')-9999
-    for i in xrange(N-1):
+    for i in xrange(N):
         for j in xrange((i+1),N+1): 
             cons = []
             
@@ -1132,3 +1133,141 @@ def _precalculate_seg_count(seq1,seq2,m=6):
             swap_mat[i,j-1] = sum(cons)
    
     return(swap_mat)
+
+"NL Addition: enumerate primers given start/stop indices"
+
+def _get_primers_multi(seq1, seq2, primers, m=6):
+    seq1 = seq1.upper()
+    seq2 = seq2.upper()
+   
+    N = len(seq1)
+   
+    #ref lists
+    cons_list = []
+    index_list = []
+    
+    match = 0
+    pmatch = m
+
+    for i in xrange(N):
+        #if equal, increment by 1, else set to 0
+        match = match*(seq1[i]==seq2[i]) + (seq1[i]==seq2[i]) 
+        if (match == m):
+            #if min conecutive matches reached, backtrack to define start of seq
+            index_list.append(i - m + 1)
+            cons_list.append(0)
+        elif ((match == 0) and (pmatch>=m)):
+            index_list.append(i) 
+            cons_list.append(1)
+        pmatch = match
+        
+    #store start, end, and swap ID of each segment
+    index_array = numpy.zeros((3,len(cons_list)), dtype='int')
+     
+    index_list.append((N))
+    
+    swap_ID = 1
+    keep_ID = -1
+    swap_list = []
+    keep_list = []
+    
+    for i in xrange(len(cons_list)):
+        s = index_list[i] 
+        e = index_list[i+1]
+        index_array[0,i] = s 
+        index_array[1,i] = e
+        if (cons_list[i] == 1):
+            index_array[2,i] = swap_ID
+            swap_ID += 1
+            swap_list.append(seq1[s:e])
+            swap_list.append(seq2[s:e])
+        else:
+            index_array[2,i] = keep_ID
+            keep_ID += -1 
+            keep_list.append(seq1[s:e])
+       
+    sequences = []
+    permutations = []
+    swap_segments = []
+    
+    for n in xrange(len(primers[1,:])):
+        i = primers[0,n]
+        j = primers[1,n]+1
+        strand = primers[2,n]
+        
+        IDs = []
+        starts = []
+        stops = []
+        
+        swap_trk = []
+        swap = []
+        keep_trk = []
+        keep = []
+        
+        ct = 0
+        
+        out = []
+        perm = []
+        
+        for k in xrange(len(index_array[1,])):
+            
+            if ((index_array[0,k] < j) and (index_array[1,k] > i)):
+                IDs.append(k)
+                starts.append(index_array[0,k])
+                stops.append(index_array[1,k])
+                if (index_array[2,k] > 0):
+                    swap_trk.append(ct) 
+                    swap.append((index_array[2,k]-1))
+                else:
+                    keep_trk.append(ct)
+                    keep.append((-index_array[2,k]-1))
+                ct += 1
+                
+        if (len(swap)==0):
+            collapse = keep_list[keep[0]]            
+                    
+            s_clip = i - min(starts)
+            e_clip = len(collapse) + j - max(stops)
+                        
+            collapse = collapse[s_clip:e_clip]
+
+            if (strand == -1):
+                collapse = reverse_complement(collapse)            
+            
+            out = [collapse]
+            perm = '0'
+            swap = [-1]
+            
+        else:
+            strings = ['']*len(IDs)
+            
+            for m in xrange(len(keep)):
+                strings[keep_trk[m]] = keep_list[keep[m]]
+
+            s_rep = ["".join(seq) for seq in itertools.product("01", repeat=len(swap))]
+            for m in xrange(len(s_rep)):
+                bin = s_rep[m]
+                for n in xrange(len(swap)):
+                    ind = 2*(swap[n]) + int(bin[n])
+                    swap_str = swap_list[ind]
+                    strings[swap_trk[n]] = swap_str
+                    
+                collapse = "".join(strings)
+                    
+                s_clip = i - min(starts)
+                e_clip = len(collapse) + j - max(stops)
+                
+                collapse = collapse[s_clip:e_clip]
+                
+                if (strand == -1):
+                    collapse = reverse_complement(collapse)
+
+                out.append(collapse)
+                perm.append(bin)
+        
+        sequences.append(out)
+        permutations.append(perm)
+        swap_segments.append(swap)        
+        
+    return(sequences, permutations, swap_segments, index_array)
+

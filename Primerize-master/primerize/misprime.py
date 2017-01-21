@@ -31,9 +31,7 @@ def _check_misprime(sequence):
     subset_str.sort()
 
     # how close is match to neighbor?
-    # NL: Plan is to rewrite this so that it uses forloop+breaks to search backward
-    #     and forward until first non-dupe is found (as gauged by +/- seq ID var)
-    #     It will be uglier, but everything wil be done in 1 step 
+
     match_next = numpy.zeros((1, 2 * N - 1))
     misprime_score_next = numpy.zeros((1, 2 * N - 1))
     for i in xrange(2 * N - 1):
@@ -48,7 +46,7 @@ def _check_misprime(sequence):
             count += 1
 
             if str_1[count] == 'G' or str_1[count] == 'C':
-                misprime_score += 1.25
+                misprime_score += 2
             else:
                 misprime_score += 1.0
 
@@ -103,7 +101,7 @@ def _check_misprime(sequence):
 
 
 def _check_misprime_multi(sequence1, sequence2, m=6, l=20):
-        
+    
     sequence1 = sequence1.upper()
     sequence2 = sequence2.upper()        
         
@@ -240,7 +238,7 @@ def _check_misprime_multi(sequence1, sequence2, m=6, l=20):
                     for n in xrange(len(swap)):
                         segment.append((swap[n]+1)*(int(binary[n])-(int(binary[n])==0))) # <0 if cons, >0 if swap                    
                         ind = 2*(swap[n]) + int(binary[n])
-                        swap_str = swap_list[ind]
+                        swap_str = swap_list[ind] #wt if zero, swap spacer if 1
                         strings[swap_trk[n]] = swap_str #fill in swap strings
                         
                     #concatenate string list    
@@ -274,7 +272,7 @@ def _check_misprime_multi(sequence1, sequence2, m=6, l=20):
         segments = segmentID[ID] #segments covered by current seq    
         bp = bpID[ID] + N*strandID[ID] 
      
-        #look back
+        #look back until a compatible comparison seq is found
         b = i-1
         match_rev = -1
         misprime_rev = -1
@@ -295,7 +293,7 @@ def _check_misprime_multi(sequence1, sequence2, m=6, l=20):
                     count += 1
         
                     if str_1[count] == 'G' or str_1[count] == 'C':
-                        misprime_score += 1.25
+                        misprime_score += 2.0 #NL: Studies indicate that energy associated with GC bonds is about twice that of AT  
                     else:
                         misprime_score += 1.0
         
@@ -325,7 +323,7 @@ def _check_misprime_multi(sequence1, sequence2, m=6, l=20):
                     count += 1
         
                     if str_1[count] == 'G' or str_1[count] == 'C':
-                        misprime_score += 1.25
+                        misprime_score += 2.0 #NL: Studies indicate that energy associated with GC bonds is about twice that of AT  
                     else:
                         misprime_score += 1.0
         
@@ -363,6 +361,89 @@ def _check_misprime_multi(sequence1, sequence2, m=6, l=20):
     return (num_match_forward, num_match_reverse, best_match_forward, best_match_reverse, misprime_score_forward, misprime_score_reverse)
 
 
+"""
+"NL Addition: Adaptation of original misprime function to assess misprime "
+             "for chosen set of primers"
+"""
+
+def _check_misprime_post(sequence, primer_set, misprime_warn, primer_key):
+
+    N = len(sequence)
+    # length of string subsets
+    m = 20
+    subset_str = []
+
+    # match to sequence
+    for i in xrange(N):
+        start_pos = max(i - m, 0) - 1
+        if start_pos == -1:
+            subset_str.append(sequence[i::-1])
+        else:
+            subset_str.append(sequence[i:start_pos:-1])
+
+    # match to reverse complement of sequence
+    sequence_rc = reverse_complement(sequence)
+    for i in xrange(N):
+        end_pos = N - i - 1
+        start_pos = max(end_pos - m - 1, 0) - 1
+        if start_pos == -1:
+            subset_str.append(sequence_rc[end_pos::-1])
+        else:
+            subset_str.append(sequence_rc[end_pos:start_pos:-1])
+
+    
+    match_list = []
+    misprime_score_list = []
+    match_id_list = []
+    strand = -1
+    for i in xrange(len(primer_set)):
+        
+        str_1 = primer_set[i]
+        str_1 = str_1[::-1]
+        strand = -1*strand
+        iterlist = range(2*N)
+        if (strand==1):
+            iterlist.remove(primer_key[1,i])
+        else:
+            iterlist.remove(primer_key[0,i]+N)
+        match = []
+        misprime = []
+        match_id = []
+        for j in iterlist :
+            ind = j % N
+            
+            
+            count = -1
+            misprime_score = 0
+            
+            str_2 = subset_str[j]
+    
+            while (count < len(str_1) - 1 and count < len(str_2) - 1): 
+                if str_1[count + 1] != str_2[count + 1]:               
+                    break
+                count += 1
+    
+                if str_1[count] == 'G' or str_1[count] == 'C':
+                    misprime_score += 2.0 #NL: Studies indicate that energy associated with GC bonds is about twice that of AT  
+                else:
+                    misprime_score += 1.0
+    
+            if (count > misprime_warn):
+                sub_match = []
+                for k in xrange(len(primer_key[1,])):
+                    if (ind >= primer_key[0,k] and ind <= primer_key[1,k]):
+                        sub_match.append(k)   
+                        
+                match_id.append(sub_match)
+                match.append(count)
+                misprime.append(misprime_score)                               
+                
+
+        match_list.append(match)
+        misprime_score_list.append(misprime)
+        match_id_list.append(match_id)
+                
+    return (match_list, misprime_score_list, match_id_list)
 
 
 

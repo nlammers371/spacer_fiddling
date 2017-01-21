@@ -15,6 +15,8 @@ class Design_Single(object):
         name: ``str``: Construct prefix/name.
         is_success: ``bool``: Flag for whether ``primerize.Primerize_1D.design()`` run successfully found a solution.
         primer_set: ``list(str)``: List of primers for assembly.
+        permutations: ``list(str)``: List key indicating which permutation each member of "primer_set" corresponds to 
+        swap_segments: ``list(str)``: List indicating swap segment IDs associated with each primer        
         params: ``dict``: Dictionary of parameters used for this result.
         data: ``dict``: Dictionary of result data.
 
@@ -29,7 +31,7 @@ class Design_Single(object):
 
     def __init__(self, init_dict):
         for key in init_dict:
-            if key not in ['sequence', 'name', 'is_success', 'primer_set', 'params', 'data']:
+            if key not in ['sequence', 'name', 'is_success', 'primer_set', 'permutations', 'swap_segments', 'index_array', 'params', 'data']:
                 raise ValueError('\033[41mERROR\033[0m: Unrecognized key \033[92m%s\033[0m for \033[94m%s\033[0m.\n' % (key, self.__class__))
             key_rename = '_' + key if key in ['params', 'data'] else key
             setattr(self, key_rename, init_dict[key])
@@ -38,7 +40,7 @@ class Design_Single(object):
         """Representation of the ``Design_Single`` class.
         """
 
-        return '\033[94m%s\033[0m {\n\033[95msequence\033[0m = \'%s\', \n\033[95mname\033[0m = \'%s\', \n\033[95mis_success\033[0m = \033[41m%s\033[0m, \n\033[95mprimer_set\033[0m = %s, \n\033[95mparams\033[0m = %s, \n\033[95mdata\033[0m = {\n    \033[92m\'misprime_score\'\033[0m: %s, \n    \033[92m\'assembly\'\033[0m: %s, \n    \033[92m\'warnings\'\033[0m: %s\n}' % (self.__class__, self.sequence, self.name, self.is_success, repr(self.primer_set), repr(self._params), repr(self._data['misprime_score']), repr(self._data['assembly']), repr(self._data['warnings']))
+        return '\033[94m%s\033[0m {\n\033[95msequence\033[0m = \'%s\', \n\033[95mname\033[0m = \'%s\', \n\033[95mis_success\033[0m = \033[41m%s\033[0m, \n\033[95mprimer_set\033[0m = %s, \n\033[95mpermutations\033[0m = %s, \n\033[95mswap_segments\033[0m = %s, \n\033[95mindex_array\033[0m = %s, \n\033[95mparams\033[0m = %s, \n\033[95mdata\033[0m = {\n    \033[92m\'misprime_score\'\033[0m: %s, \n    \033[92m\'assembly\'\033[0m: %s, \n    \033[92m\'warnings\'\033[0m: %s\n}' % (self.__class__, self.sequence, self.name, self.is_success, repr(self.primer_set), repr(self.permutations), repr(self.swap_segments), repr(self.index_array), repr(self._params), repr(self._data['misprime_score']), repr(self._data['assembly']), repr(self._data['warnings']))
 
     def __str__(self):
         """Results of the ``Design_Single`` class. Calls ``echo()``.

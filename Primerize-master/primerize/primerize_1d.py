@@ -124,10 +124,10 @@ class Primerize_1D(thermo.Singleton):
         self.MIN_LENGTH = 15
         self.MAX_LENGTH = 60
         self.COL_SIZE = 142
-        self.WARN_CUTOFF = 3
+        self.WARN_CUTOFF = 2
 
 
-    def design(self, sequence, MIN_TM=None, NUM_PRIMERS=None, MIN_LENGTH=None, MAX_LENGTH=None, prefix=None):
+    def design(self, sequence1, sequence2, MIN_TM=None, NUM_PRIMERS=None, MIN_LENGTH=None, MAX_LENGTH=None, prefix=None):
         """Run design code to get a PCR Assembly solution for input sequence under specified conditions. Current worker parameters are used for nonspecified optional arguments.
 
         Args:
@@ -149,8 +149,9 @@ class Primerize_1D(thermo.Singleton):
         prefix = self.prefix if prefix is None else prefix
 
         name = prefix
-        sequence = util.RNA2DNA(sequence)
-        N_BP = len(sequence)
+        sequence1 = util.RNA2DNA(sequence1)
+        sequence2 = util.RNA2DNA(sequence2)        
+        N_BP = len(sequence1)
         params = {'MIN_TM': MIN_TM, 'NUM_PRIMERS': NUM_PRIMERS, 'MIN_LENGTH': MIN_LENGTH, 'MAX_LENGTH': MAX_LENGTH, 'N_BP': N_BP, 'COL_SIZE': self.COL_SIZE, 'WARN_CUTOFF': self.WARN_CUTOFF}
 
         is_success = True
@@ -159,14 +160,16 @@ class Primerize_1D(thermo.Singleton):
 
         try:
             print('Precalculataing Tm matrix ...')
-            Tm_precalculated = thermo._precalculate_Tm(sequence)
+            Tm_precalculated = thermo._precalculate_Tm_multi(sequence1,sequence2)
+            #Tm_precalculated1 = thermo._precalculate_Tm_multi(sequence,sequence)
             print('Precalculataing misprime score ...')
-            (num_match_forward, num_match_reverse, best_match_forward, best_match_reverse, misprime_score_forward, misprime_score_reverse) = misprime._check_misprime(sequence)
-
-            print('Doing dynamics programming calculation ...')
-            (scores_start, scores_stop, scores_final, choice_start_p, choice_start_q, choice_stop_i, choice_stop_j, MAX_SCORE, N_primers) = _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misprime_score_forward, misprime_score_reverse, Tm_precalculated)
+            (num_match_forward, num_match_reverse, best_match_forward, best_match_reverse, misprime_score_forward, misprime_score_reverse) = misprime._check_misprime_multi(sequence1,sequence2)
+            print('Precalculataing swap segment scores ...')
+            swap_mat = util._precalculate_seg_count(sequence1,sequence2)
+            print('Doing dynamic programming calculation ...')
+            (scores_start, scores_stop, scores_final, choice_start_p, choice_start_q, choice_stop_i, choice_stop_j, ceiling, N_primers) = _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, num_match_forward, num_match_reverse, Tm_precalculated, swap_mat)
             print('Doing backtracking ...')
-            (is_success, primers, primer_set, warnings) = _back_tracking(N_BP, sequence, scores_final, choice_start_p, choice_start_q, choice_stop_i, choice_stop_j, N_primers, MAX_SCORE, num_match_forward, num_match_reverse, best_match_forward, best_match_reverse, self.WARN_CUTOFF)
+            (is_success, primers, primer_set, permutations, swap_segments, index_array) = _back_tracking(N_BP, sequence1, sequence2, scores_final, choice_start_p, choice_start_q, choice_stop_i, choice_stop_j, N_primers, ceiling, num_match_forward, num_match_reverse, best_match_forward, best_match_reverse, self.WARN_CUTOFF)
 
             if is_success:
                 allow_forward_line = list(' ' * N_BP)
@@ -176,7 +179,7 @@ class Primerize_1D(thermo.Singleton):
                     allow_reverse_line[i] = str(int(min(num_match_reverse[0, i] + 1, 9)))
 
                 misprime_score = [''.join(allow_forward_line).strip(), ''.join(allow_reverse_line).strip()]
-                assembly = util.Assembly(sequence, primers, name, self.COL_SIZE)
+                assembly = util.Assembly(sequence1, primers, name, self.COL_SIZE)
                 print('\033[92mSUCCESS\033[0m: Primerize 1D design() finished.\n')
             else:
                 print('\033[41mFAIL\033[0m: \033[41mNO Solution\033[0m found under given contraints.\n')
@@ -185,27 +188,36 @@ class Primerize_1D(thermo.Singleton):
             print(traceback.format_exc())
             print('\033[41mERROR\033[0m: Primerize 1D design() encountered error.\n')
             data = {'misprime_score': [], 'assembly': [], 'warnings': []}
-            return Design_Single({'sequence': sequence, 'name': name, 'is_success': is_success, 'primer_set': [], 'params': params, 'data': data})
+            return Design_Single({'sequence': sequence1, 'name': name, 'is_success': is_success, 'primer_set': [], 'permutations' : [], 'swap_segments' : [], 'index_array' : [], 'params': params, 'data': data})
 
         data = {'misprime_score': misprime_score, 'assembly': assembly, 'warnings': warnings}
-        return Design_Single({'sequence': sequence, 'name': name, 'is_success': is_success, 'primer_set': primer_set, 'params': params, 'data': data})
+        return Design_Single({'sequence': [sequence1, sequence2], 'name': name, 'is_success': is_success, 'primer_set': primer_set, 'permutations' : permutations, 'swap_segments' : swap_segments, 'index_array' : index_array, 'params': params, 'data': data})
 
 
 
 
 @jit(nopython=True, nogil=True, cache=False)
-def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misprime_score_forward, misprime_score_reverse, Tm_precalculated):
+def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misprime_score_forward, misprime_score_reverse, Tm_precalculated, swap_mat, WARN_CUTOFF=2):
     # could be zero, meaning user does not know.
     num_primer_sets = int(NUM_PRIMERS / 2)
     num_primer_sets_max = int(math.ceil(N_BP / float(MIN_LENGTH))) #NL: floor?
 
-    misprime_score_weight = 10.0
-    MAX_SCORE = N_BP * 2 + 1 #NL: max possible length penalty
-    MAX_SCORE += misprime_score_weight * max(numpy.amax(misprime_score_forward), numpy.amax(misprime_score_reverse)) * 2 * num_primer_sets_max
+#    misprime_score_weight = 10.0
+    ceiling = 1e100
+    gcScore = 2.0 #NL: Studies indicate that energy associated with GC bonds is about twice that of AT  
+    l_max = 0
+    for i in xrange(len(swap_mat[1,:])- MAX_LENGTH):
+        l_max = max(MAX_LENGTH*(2**swap_mat[i,i+MAX_LENGTH]), l_max)
 
-    scores_start = MAX_SCORE * numpy.ones((N_BP, N_BP, num_primer_sets_max))
-    scores_stop = MAX_SCORE * numpy.ones((N_BP, N_BP, num_primer_sets_max))
-    scores_final = MAX_SCORE * numpy.ones((N_BP, N_BP, num_primer_sets_max))
+    logl_max = math.log(l_max) #max possible length penalty
+    log_misprime_base = logl_max/((WARN_CUTOFF+1)*gcScore) #calculate base for misprime penalty 
+
+ #   MAX_SCORE = N_BP * 2 + 1 #NL: max possible length penalty
+ #   MAX_SCORE += misprime_score_weight * max(numpy.amax(misprime_score_forward), numpy.amax(misprime_score_reverse)) * 2 * num_primer_sets_max
+
+    scores_start = ceiling * numpy.ones((N_BP, N_BP, num_primer_sets_max))
+    scores_stop = ceiling * numpy.ones((N_BP, N_BP, num_primer_sets_max))
+    scores_final = ceiling * numpy.ones((N_BP, N_BP, num_primer_sets_max))
 
     # used for backtracking:
     choice_start_p = numpy.zeros((N_BP, N_BP, num_primer_sets_max), dtype=numpy.int16)
@@ -228,10 +240,10 @@ def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misp
 
         for q in xrange(q_min, q_max + 1):
             if (Tm_precalculated[q - 1, p - 1] > MIN_TM): 
-                scores_stop[p - 1, q - 1, 0] = (q - 1) + 2 * (p - q + 1) #NL: length penalty
-                scores_stop[p - 1, q - 1, 0] += misprime_score_weight * (misprime_score_forward[0, p - 1] + misprime_score_reverse[0, q - 1])
+                scores_stop[p - 1, q - 1, 0] = math.log(p) + swap_mat[0,p-1]*math.log(2)  #NL: adjusted length penalty
+                scores_stop[p - 1, q - 1, 0] += (misprime_score_forward[0, p - 1] + misprime_score_reverse[0, q - 1])*log_misprime_base
 
-    best_min_score = MAX_SCORE
+    best_min_score = ceiling
     n = 1
     while (n <= num_primer_sets_max):
         # final scoring -- let's see if we can 'close' at the end of the sequence.
@@ -242,20 +254,20 @@ def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misp
         #            <---------------------
         #            q                    N_BP
         #
-        for p in xrange(1, N_BP + 1): #NL: why not MIN_LENGTH?
+        for p in xrange(1, N_BP + 1): 
             q_min = max(1, p - MAX_LENGTH + 1)
             q_max = p
 
             # STOP[reverse]
             for q in xrange(q_min, q_max + 1):
                 # previous primer ends had overlap with good Tm and were scored
-                if (scores_stop[p - 1, q - 1, n - 1] < MAX_SCORE):
+                if (scores_stop[p - 1, q - 1, n - 1] < ceiling):
                     i = N_BP + 1
                     j = N_BP
                     last_primer_length = j - q + 1
                     if last_primer_length <= MAX_LENGTH and last_primer_length >= MIN_LENGTH:
-                        scores_final[p - 1, q - 1, n - 1] = scores_stop[p - 1, q - 1, n - 1] + (i - p - 1) 
-                        scores_final[p - 1, q - 1, n - 1] += misprime_score_weight * (misprime_score_forward[0, p - 1] + misprime_score_reverse[0, q - 1])
+                        scores_final[p - 1, q - 1, n - 1] = scores_stop[p - 1, q - 1, n - 1] + math.log(last_primer_length) + swap_mat[q-1,j-1]*math.log(2) 
+                        #scores_final[p - 1, q - 1, n - 1] += (misprime_score_forward[0, p - 1] + misprime_score_reverse[0, q - 1])*log_misprime_base #!!!NL: This penalty is applied in original version, but I think it is redundant and inconsistent with rest of scoring scheme
 
         min_score = numpy.amin(scores_final[:, :, n - 1]) #best score of all enumerated sets containing n primers
         if (min_score < best_min_score or n == 1):
@@ -285,7 +297,7 @@ def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misp
             # STOP[reverse](1)
             for q in xrange(q_min, q_max + 1):
                 # previous primer ends had overlap with good Tm and were scored
-                if (scores_stop[p - 1, q - 1, n - 2] < MAX_SCORE):
+                if (scores_stop[p - 1, q - 1, n - 2] < ceiling):
                     # START[reverse](1)
                     min_j = max(p + 1, q + MIN_LENGTH - 1)
                     max_j = min(N_BP, q + MAX_LENGTH - 1)
@@ -298,7 +310,7 @@ def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misp
                         for i in xrange(min_i, max_i + 1):
                             # at some PCR stage this will be an endpoint!
                             if (Tm_precalculated[i - 1, j - 1] > MIN_TM):
-                                potential_score = scores_stop[p - 1, q - 1, n - 2] + (i - p - 1) + 2 * (j - i + 1)
+                                potential_score = scores_stop[p - 1, q - 1, n - 2] + math.log((j - q + 1)) + swap_mat[q-1,j-1]*math.log(2) 
                                 if (potential_score < scores_start[i - 1, j - 1, n - 2]):
                                     scores_start[i - 1, j - 1, n - 2] = potential_score
                                     choice_start_p[i - 1, j - 1, n - 2] = p - 1
@@ -320,7 +332,7 @@ def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misp
 
             for i in xrange(min_i, max_i + 1):
                 # could also just make this 1:N_BP, but that would wast a little time.
-                if (scores_start[i - 1, j - 1, n - 2] < MAX_SCORE):
+                if (scores_start[i - 1, j - 1, n - 2] < ceiling):
                     # STOP[reverse](1)
                     min_p = max(j + 1, i + MIN_LENGTH - 1)
                     max_p = min(N_BP, i + MAX_LENGTH - 1)
@@ -332,8 +344,8 @@ def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misp
 
                         for q in xrange(min_q, max_q + 1):
                             if (Tm_precalculated[q - 1, p - 1] > MIN_TM):
-                                potential_score = scores_start[i - 1, j - 1, n - 2] + (q - j - 1) + 2 * (p - q + 1)
-                                potential_score += misprime_score_weight * (misprime_score_forward[0, p - 1] + misprime_score_reverse[0, q - 1])
+                                potential_score = scores_start[i - 1, j - 1, n - 2] + math.log(p - i + 1) + swap_mat[i-1,p-1]*math.log(2) 
+                                potential_score += (misprime_score_forward[0, p - 1] + misprime_score_reverse[0, q - 1])*log_misprime_base
                                 if (potential_score < scores_stop[p - 1, q - 1, n - 1]):
                                     scores_stop[p - 1, q - 1, n - 1] = potential_score
                                     choice_stop_i[p - 1, q - 1, n - 1] = i - 1
@@ -343,21 +355,25 @@ def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misp
         N_primers = num_primer_sets
     else:
         N_primers = best_n
-    return (scores_start, scores_stop, scores_final, choice_start_p, choice_start_q, choice_stop_i, choice_stop_j, MAX_SCORE, N_primers)
+    return (scores_start, scores_stop, scores_final, choice_start_p, choice_start_q, choice_stop_i, choice_stop_j, ceiling, N_primers)
 
 
-def _back_tracking(N_BP, sequence, scores_final, choice_start_p, choice_start_q, choice_stop_i, choice_stop_j, N_primers, MAX_SCORE, num_match_forward, num_match_reverse, best_match_forward, best_match_reverse, WARN_CUTOFF):
+def _back_tracking(N_BP, sequence1, sequence2, scores_final, choice_start_p, choice_start_q, choice_stop_i, choice_stop_j, N_primers, ceiling, num_match_forward, num_match_reverse, best_match_forward, best_match_reverse, WARN_CUTOFF):
     y = numpy.amin(scores_final[:, :, N_primers - 1], axis=0)
     idx = numpy.argmin(scores_final[:, :, N_primers - 1], axis=0)
-    min_scroe = numpy.amin(y)
+    min_score = numpy.amin(y)
     q = numpy.argmin(y)
     p = idx[q]
 
     is_success = True
     primer_set = []
-    misprime_warn = []
+    permutations = []
+    swap_segments = []
+    index_array = []
+ #   misprime_warn = []
     primers = numpy.zeros((3, 2 * N_primers))
-    if (min_scroe == MAX_SCORE):
+    
+    if (min_score == ceiling):
         is_success = False
     else:
         primers[:, 2 * N_primers - 1] = [q, N_BP - 1, -1]
@@ -371,6 +387,10 @@ def _back_tracking(N_BP, sequence, scores_final, choice_start_p, choice_start_q,
         primers[:, 0] = [0, p, 1]
         primers = primers.astype(int)
 
+        (primer_set, permutations, swap_segments, index_array) = util._get_primers_multi(sequence1, sequence2, primers)
+    
+    return (is_success, primers, primer_set, permutations, swap_segments, index_array)
+"""
         for i in xrange(2 * N_primers):
             primer_seq = sequence[primers[0, i]:primers[1, i] + 1]
             if primers[2, i] == -1:
@@ -389,8 +409,8 @@ def _back_tracking(N_BP, sequence, scores_final, choice_start_p, choice_start_q,
                 if (num_match_forward[0, end_pos] >= WARN_CUTOFF):
                     problem_primer = _find_primers_affected(primers, best_match_forward[0, end_pos])
                     misprime_warn.append((i + 1, int(num_match_forward[0, end_pos] + 1), int(best_match_forward[0, end_pos] + 1), problem_primer))
-
-    return (is_success, primers, primer_set, misprime_warn)
+"""
+    
 
 
 def _find_primers_affected(primers, pos):
