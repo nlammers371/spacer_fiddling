@@ -100,7 +100,7 @@ def _check_misprime(sequence):
 ""
 
 
-def _check_misprime_multi(sequence1, sequence2, m=6, l=20):
+def _check_misprime_multi_archive(sequence1, sequence2, m=6, l=20):
     
     sequence1 = sequence1.upper()
     sequence2 = sequence2.upper()        
@@ -358,7 +358,258 @@ def _check_misprime_multi(sequence1, sequence2, m=6, l=20):
     misprime_score_reverse = misprime_score_mat[:,N:]
     best_match_reverse = best_match_mat[:,N:]
     
-    return (num_match_forward, num_match_reverse, best_match_forward, best_match_reverse, misprime_score_forward, misprime_score_reverse)
+    return (num_match_forward, num_match_reverse, best_match_forward, best_match_reverse, misprime_score_forward, misprime_score_reverse, subset_str)
+
+
+def _check_misprime_multi(sequence1, sequence2, m=6, l=20):
+    
+    sequence1 = sequence1.upper()
+    sequence2 = sequence2.upper()        
+        
+    subset_str = [] #list of all possible sequences
+    bpID = [] #track starting position of each string
+    segmentID = [] #track segment number and segment version (list of lists)
+    strandID = [] #F=0, R=1
+    
+    for strand in xrange(2):
+        if (strand == 0):
+            seq1 = sequence1
+            seq2 = sequence2
+        elif (strand == 1):
+            seq1 = reverse_complement(sequence1)
+            seq2 = reverse_complement(sequence2)
+        
+        N_BP = len(seq1)
+           
+        #ref lists
+        cons_list = [] #1 if mismatched region, 0 if matched
+        index_list = [] #starting bp of each new segments
+        
+        match = 0 #tracks number of consecutive matching bp
+        pmatch = m #previous value of m
+        #with current formailism, it is impossible to have a "match" segment
+        #<m bp in lengths but it is possible to have a shorter mismatched segment
+        for i in xrange(N_BP):
+            #if equal, increment by 1, else set to 0
+            match = match*(seq1[i]==seq2[i]) + (seq1[i]==seq2[i]) 
+            if (match == m):
+                #if min conecutive matches reached, backtrack to define start of segement
+                index_list.append(i - m + 1)
+                cons_list.append(0)
+            elif ((match == 0) and (pmatch >= m)):
+                #if first mismatch following streak of matches, define new segment
+                index_list.append(i) 
+                cons_list.append(1)
+            pmatch = match
+            
+        #store start, end, and segment ID and swap ID of each segment
+        index_array = numpy.zeros((4,len(cons_list)), dtype='int')
+         
+        index_list.append((N_BP))
+        #account for fact that we are working with RC. Segment numbering will need 
+        #to be consistent for subsequent misprime scoring        
+    
+        swap_ID = 1
+        #store sequence strings
+        swap_list = []        
+        
+        for i in xrange(len(cons_list)):
+            s = index_list[i] 
+            e = index_list[i+1]
+            index_array[0,i] = s 
+            index_array[1,i] = e
+            if (cons_list[i] == 1):
+                index_array[2,i] = swap_ID #convention: swap segments > 0, keep < 0
+                swap_list.append([seq1[s:e],seq2[s:e]])
+            else:
+                index_array[2,i] = -swap_ID
+                swap_list.append(seq1[s:e])
+            index_array[3,i] = swap_ID
+            swap_ID += 1
+            
+        #if on reverse strand we need an index var to recover correct segment ID
+        segment_ind = strand*(1+len(cons_list))
+            
+        #Iterate through sequence to generate list of all possible strings
+        for j in xrange(1,N_BP+1):
+            #j-1 denotes leading edge of string, i trailing
+            i = max((j-l),0)
+            
+            if(strand == 0):
+                bp = j-1
+            elif(strand == 1):
+                bp = N_BP-j
+    
+           #filter for relevant segments
+            index_filt = index_array[:, (index_array[0,:] < j) & (index_array[1,:] > i) ]
+            ind_start = min(index_filt[3,:]) 
+            
+            #break up array for simplicity
+            starts = index_filt[0,:]
+            stops = index_filt[1,:]
+            
+            
+            #list to store segment strings            
+            strings = ['']*len(starts)  
+            
+            keep_indices = index_filt[3,(index_filt[2,:] < 0)]-ind_start
+            swap_indices = index_filt[3,(index_filt[2,:] > 0)]-ind_start
+ 
+            for k in keep_indices:
+                strings[k] = swap_list[k+ind_start-1]
+                     
+            #if no swap segments, life is simple. There must be only 1 segment involved                 
+            if (len(swap_indices)==0):
+                collapse = "".join(strings)
+                s_clip = i - min(starts)
+                e_clip = len(collapse) + j - max(stops)
+                segment = [-9999] #this is filler. could be any number
+                                
+                out = collapse[s_clip:e_clip]
+                
+                subset_str.append(out[::-1])
+                segmentID.append(segment)  
+                bpID.append(bp)
+                strandID.append(strand)   
+                
+            #otherwise we must enumrate all possible combos         
+            elif (len(swap_indices)>0):                       
+                #for len(swap) swap segments, enumerate all possible unique combinations
+                s_rep = ["".join(seq) for seq in itertools.product("01", repeat=len(swap_indices))]
+                for n in xrange(len(s_rep)):
+                    segment = []
+                    bin = s_rep[n]
+                    for o in xrange(len(bin)):
+                        seg_ID = abs(segment_ind - (swap_indices[o] + ind_start))
+                        segment.append(seg_ID*(int(bin[o])-(int(bin[o])==0))) # <0 if cons, >0 if swap
+                        swap_strings = swap_list[swap_indices[o] + ind_start - 1]
+                        swap_str = swap_strings[int(bin[o])]
+                        strings[swap_indices[o]] = swap_str
+                
+                #concatenate string list    
+                    collapse = "".join(strings)
+                    
+                    s_clip = i - min(starts)
+                    e_clip = len(collapse) + j - max(stops)
+                    out = collapse[s_clip:e_clip]
+    
+                    subset_str.append(out[::-1])
+                    segmentID.append(segment)                
+                    bpID.append(bp)
+                    strandID.append(strand)
+            else:
+                print('No swap or keep segments found for index ' + str(i) + ',' + str(j) + ' on strand ' + str(strand))
+    
+    ###############################################################
+    ####################Score Nearest Matches#######################
+    
+    sort_idx = numpy.argsort(subset_str) #track original positions of sorted strings
+    subset_str.sort() #sort sequences fragments
+        
+    #pre-allocate lists
+    num_match_mat = numpy.zeros((1, 2*N_BP))-1
+    misprime_score_mat = numpy.zeros((1, 2*N_BP))-1
+    best_match_mat = numpy.zeros((1, 2*N_BP))-1    
+    
+    for i in xrange(len(subset_str)):
+        seq = subset_str[i] 
+        ID = sort_idx[i] #recover original position
+        
+        segments = segmentID[ID] #segments covered by current seq    
+        bp = bpID[ID] + N_BP*strandID[ID] 
+     
+        #look back until a compatible comparison seq is found
+        #i.e. one that does not contain a conflicting segment
+        b = i-1
+        match_rev = -1
+        misprime_rev = -1
+        while (b>=0):
+            #check if current comp sequence contains incompatable segments   
+            #incompatible segments have IDs of same magnitude but oppoisite sign
+            comp_seq = segmentID[sort_idx[b]]        
+            comp_seq = [x * -1 for x in comp_seq]    
+            #if no conflicting segments start comparison. Break cycle once comparison
+            #is complete
+            if set(segments).isdisjoint(set(comp_seq)):
+                count = 0
+                misprime_score = 0
+                str_1 = seq
+                str_2 = subset_str[b]
+                #run through strings to see how many consecutive bp's match
+                while (count < len(str_1) - 1 and count < len(str_2) - 1): 
+                    if str_1[count + 1] != str_2[count + 1]:               
+                        break
+                    count += 1
+        
+                    if str_1[count] == 'G' or str_1[count] == 'C':
+                        misprime_score += 2.0 #NL: Studies indicate that energy associated with GC bonds is about twice that of AT  
+                    else:
+                        misprime_score += 1.0
+        
+                match_rev = count
+                misprime_rev = misprime_score
+                
+                break
+            else:
+                #if no match, look back to the next one
+                b += -1
+    
+        #look forward
+        f = i+1
+        match_fwd = -1
+        misprime_fwd = -1
+        while (f<len(subset_str)):
+            #check if current comp sequence contains incompatable segments        
+            comp_seq = segmentID[sort_idx[f]]        
+            comp_seq = [x * -1 for x in comp_seq]        
+            if set(segments).isdisjoint(set(comp_seq)):
+                count = 0
+                misprime_score = 0
+                str_1 = seq
+                str_2 = subset_str[f]
+        
+                while (count < len(str_1) - 1 and count < len(str_2) - 1): 
+                    if str_1[count + 1] != str_2[count + 1]:               
+                        break
+                    count += 1
+        
+                    if str_1[count] == 'G' or str_1[count] == 'C':
+                        misprime_score += 2.0 #NL: Studies indicate that energy associated with GC bonds is about twice that of AT  
+                    else:
+                        misprime_score += 1.0
+        
+                match_fwd = count
+                misprime_fwd = misprime_score
+                break
+            else:
+                f += 1
+                
+        if (match_rev > match_fwd):
+            match = bpID[sort_idx[b]]
+            match_max = match_rev
+            misprime_score_max = misprime_rev
+        else:
+            match = bpID[sort_idx[f]]
+            match_max = match_fwd
+            misprime_score_max = misprime_fwd
+        
+        #compare count for current seq to count for position.
+        #if higher, take current score
+        if (match_max > num_match_mat[0,bp]):
+            num_match_mat[0,bp] = match_max
+            misprime_score_mat[0,bp] = misprime_score_max
+            best_match_mat[0,bp] = match
+    
+    #split arrays into forward and reverse to match original version output    
+    num_match_forward = num_match_mat[:,0:N_BP]
+    misprime_score_forward = misprime_score_mat[:,0:N_BP]
+    best_match_forward = best_match_mat[:,0:N_BP]
+    
+    num_match_reverse = num_match_mat[:,N_BP:]
+    misprime_score_reverse = misprime_score_mat[:,N_BP:]
+    best_match_reverse = best_match_mat[:,N_BP:]
+    
+    return (num_match_forward, num_match_reverse, best_match_forward, best_match_reverse, misprime_score_forward, misprime_score_reverse, subset_str, sort_idx, bpID, segmentID)
 
 
 """

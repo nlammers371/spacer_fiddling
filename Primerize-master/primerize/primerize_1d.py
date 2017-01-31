@@ -390,27 +390,6 @@ def _back_tracking(N_BP, sequence1, sequence2, scores_final, choice_start_p, cho
         (primer_set, permutations, swap_segments, index_array) = util._get_primers_multi(sequence1, sequence2, primers)
     
     return (is_success, primers, primer_set, permutations, swap_segments, index_array)
-"""
-        for i in xrange(2 * N_primers):
-            primer_seq = sequence[primers[0, i]:primers[1, i] + 1]
-            if primers[2, i] == -1:
-                primer_set.append(util.reverse_complement(primer_seq))
-
-                # mispriming "report"
-                end_pos = primers[0, i]
-                if (num_match_reverse[0, end_pos] >= WARN_CUTOFF):
-                    problem_primer = _find_primers_affected(primers, best_match_reverse[0, end_pos])
-                    misprime_warn.append((i + 1, int(num_match_reverse[0, end_pos] + 1), int(best_match_reverse[0, end_pos] + 1), problem_primer))
-            else:
-                primer_set.append(str(primer_seq))
-
-                # mispriming "report"
-                end_pos = primers[1, i]
-                if (num_match_forward[0, end_pos] >= WARN_CUTOFF):
-                    problem_primer = _find_primers_affected(primers, best_match_forward[0, end_pos])
-                    misprime_warn.append((i + 1, int(num_match_forward[0, end_pos] + 1), int(best_match_forward[0, end_pos] + 1), problem_primer))
-"""
-    
 
 
 def _find_primers_affected(primers, pos):

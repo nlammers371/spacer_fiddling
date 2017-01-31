@@ -1075,22 +1075,23 @@ def _mutate_primers(plates, primers, primer_set, offset, constructs, which_lib=1
 
 
 ""
-"NL Addition: precalculate matrix containing # swap segmetns between any 2 points"
+"NL Addition: precalculate matrix containing # swap segments between any 2 points"
 ""
 
 def _precalculate_seg_count(seq1,seq2,m=6):
     seq1 = seq1.upper()
     seq2 = seq2.upper()
     
-    N = len(seq1)
+    N_BP = len(seq1)
     
     cons_list = []
     ID_list = []
     index_list = []
+    
     ID = 0
     match = 0
     pmatch = m
-    for i in xrange(N):
+    for i in xrange(N_BP):
         #if equal, increment by 1, else set to 0
         match = match*(seq1[i]==seq2[i]) + (seq1[i]==seq2[i]) 
         if (match == m):
@@ -1106,12 +1107,10 @@ def _precalculate_seg_count(seq1,seq2,m=6):
             ID += 1
         pmatch = match
     
-    #index_list.append(N)
-    
     #store start, end, and swap ID of each segment
     index_array = numpy.zeros((3,len(cons_list)), dtype='int')
      
-    index_list.append(N)
+    index_list.append(N_BP)
     
     for i in xrange(len(cons_list)):
         
@@ -1121,16 +1120,13 @@ def _precalculate_seg_count(seq1,seq2,m=6):
         
     
     #array to track number of swap segments between any two points
-    swap_mat = numpy.zeros((N,N),dtype='float')-9999
-    for i in xrange(N):
-        for j in xrange((i+1),N+1): 
-            cons = []
-            
-            for k in xrange(len(index_array[1,])):          
-                if ((index_array[0,k] < j) and (index_array[1,k] > i)):
-                    cons.append(index_array[2,k])
-                
-            swap_mat[i,j-1] = sum(cons)
+    swap_mat = numpy.zeros((N_BP,N_BP),dtype='float')-9999
+    for i in xrange(N_BP):
+        for j in xrange((i+1),N_BP+1): 
+                        
+            index_cons = index_array[2, (index_array[0,:] < j) & (index_array[1,:] > i) ]
+
+            swap_mat[i,j-1] = numpy.sum(index_cons)
    
     return(swap_mat)
 
