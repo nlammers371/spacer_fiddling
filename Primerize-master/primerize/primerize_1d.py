@@ -202,18 +202,14 @@ def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misp
     num_primer_sets = int(NUM_PRIMERS / 2)
     num_primer_sets_max = int(math.ceil(N_BP / float(MIN_LENGTH))) #NL: floor?
 
-#    misprime_score_weight = 10.0
     ceiling = 1e100
-    gcScore = 2.0 #NL: Studies indicate that energy associated with GC bonds is about twice that of AT  
+    gcScore = 2.0 #NL: Studies indicate that energy associated with G-C bonds is about twice that of A-T  
     l_max = 0
     for i in xrange(len(swap_mat[1,:])- MAX_LENGTH):
         l_max = max(MAX_LENGTH*(2**swap_mat[i,i+MAX_LENGTH]), l_max)
 
     logl_max = math.log(l_max) #max possible length penalty
     log_misprime_base = logl_max/((WARN_CUTOFF+1)*gcScore) #calculate base for misprime penalty 
-
- #   MAX_SCORE = N_BP * 2 + 1 #NL: max possible length penalty
- #   MAX_SCORE += misprime_score_weight * max(numpy.amax(misprime_score_forward), numpy.amax(misprime_score_reverse)) * 2 * num_primer_sets_max
 
     scores_start = ceiling * numpy.ones((N_BP, N_BP, num_primer_sets_max))
     scores_stop = ceiling * numpy.ones((N_BP, N_BP, num_primer_sets_max))
@@ -304,7 +300,7 @@ def _dynamic_programming(NUM_PRIMERS, MIN_LENGTH, MAX_LENGTH, MIN_TM, N_BP, misp
 
                     for j in xrange(min_j, max_j + 1):
                         # start[reverse](2)
-                        min_i = max(p + 1, j - MAX_LENGTH + 1) #suspect this is redundant
+                        min_i = max(p + 1, j - MAX_LENGTH + 1) #NL: redundant
                         max_i = j
 
                         for i in xrange(min_i, max_i + 1):

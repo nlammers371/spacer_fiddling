@@ -10,17 +10,24 @@ import csv
 import re
 import numpy
 import primerize
-#import csv
-#import datetime
-#import json
+import math
+
 #datetime for desired project folder
 dt = "2017-01-16_12-08-53"
 misprime_warn = 3
 #User-generated vector indicating for each swap segment whether to use spacer or wildtype
-seg_vec = [1,1,1,1,1,1,1,1,1,1,1,1,1]
+seg_vec = [0,0,0,0,0,0,0,0,0,0,0,0,1]
 
+#test run or results run?
+#run = "tests"
+run = "results"
 
-inpath = os.path.join(os.getcwd(),'Results\\orders',dt)
+if (run=='results'):
+    folderpath = 'Results\\orders'
+elif (run == 'tests'):     
+    folderpath = 'Results\\tests'
+    
+inpath = os.path.join(os.getcwd(),folderpath,dt)
 
 assembly_string = ''.join(str(seg_vec))
 assembly_string = re.sub('\s','',assembly_string)
@@ -38,7 +45,9 @@ Sequences.close()
 Primers = open(os.path.join(inpath,'primers.txt'), 'r')
 
 prime_list = Primers.read()
+
 primers = eval(prime_list)
+
 Primers.close()
 
 #read in primer permutation key
@@ -81,7 +90,7 @@ for i in xrange(len(index_array[1,:])):
         if (seg_vec[swap_ct]==0):
             sequence += seq1[index_array[0,i]:index_array[1,i]]
         elif (seg_vec[swap_ct]==1):
-            sequence += seq1[index_array[0,i]:index_array[1,i]]
+            sequence += seq2[index_array[0,i]:index_array[1,i]]
         swap_ct += 1
 
 #filter for only vectors that will be used in this assembly
@@ -99,7 +108,6 @@ for i in xrange(len(primers)):
             match_str += str(seg_vec[swap_segments[j]])  
             
         for k in xrange(len(primer_list)):
-          
             perm_str = perm_strings[k]
                 
             if (perm_str == match_str):
@@ -126,26 +134,17 @@ for i in xrange(len(primer_key[1,:])):
         fwd = fwd[0:primer_key[0,i]] + primer + fwd[primer_key[1,i]:]
     elif (primer_key[2,i]==-1):
         rev = rev[0:primer_key[0,i]] + primer[::-1] + rev[primer_key[1,i]:]
+        
+#print assembly
+p_len = 150;
+p_iter = int(math.ceil(len(sequence)/p_len))
 
-print(rev[0:100])
-print(fwd[0:100])
+assembly = open(os.path.join(inpath,out_string + '.txt'), 'w')
 
-print('')
- 
-print(rev[100:200])
-print(fwd[100:200])   
-
-print('')
-  
-print(rev[200:300])
-print(fwd[200:300]) 
-
-print('')
-  
-print(rev[300:400])
-print(fwd[300:400])
-
-print('')
-  
-print(rev[400:500])
-print(fwd[400:500]) 
+for i in xrange(p_iter):
+    #save list of primer sequences   
+    assembly.write("%s \n" % fwd[(i*p_len):(min((i+1)*p_len,len(sequence)))])
+    assembly.write("%s \n" % rev[(i*p_len):(min((i+1)*p_len,len(sequence)))])
+    assembly.write("\n")    
+    
+assembly.close()

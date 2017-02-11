@@ -12,13 +12,21 @@ import csv
 #import datetime
 #import json
 #datetime for desired project folder
-dt = "2017-01-16_12-08-53"
+dt = "2017-01-30_22-20-45"
    
 #For first pass I want to test swap segments  4 and 11 since they are the most highly conserved
-seg_vec = [[0],[0],[0],[0,1],[0],[0],[0],[0],[0],[0],[0,1]]
+seg_vec = [[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1],[0,1]]
 
+#test run or results run?
+run = "tests"
+#run = "results"
 
-inpath = os.path.join(os.getcwd(),'Results\\orders',dt)
+if (run=='results'):
+    folderpath = 'Results\\orders'
+elif (run == 'tests'):     
+    folderpath = 'Results\\tests'
+
+inpath = os.path.join(os.getcwd(),folderpath,dt)
 
 #read in sequences
 Sequences = open(os.path.join(inpath,'sequences.txt'), 'r')
@@ -72,7 +80,10 @@ swap_strings = [['']]*len(swap_key)
 for i in xrange(len(swap_key)):
     if (max(swap_key[i]) == -1):
         swap_strings[i] = ['0']
-        
+   
+#build index indicating which versions of each primer are needed given the desired
+#possible permutations specified by seg_vec. This is a little complicated because
+#primers can contain multiple segments and, in general, N_primers ne N_segments     
 for i in xrange(len(seg_vec)):
     swap_bin = seg_vec[i]
     for j in xrange(len(swap_key)):
@@ -80,14 +91,15 @@ for i in xrange(len(seg_vec)):
         swap_string = swap_strings[j]
         if (i in swap):
             swap_new = []
-            for k in xrange(len(swap_string)):
-                
+            for k in xrange(len(swap_string)):                
                 for l in xrange(len(swap_bin)):
                     swap_new.append(swap_string[k]+str(swap_bin[l]))
                     
             swap_strings[j] = swap_new
             
-
+#this calculates seg_vec equivalent for primers. Could be condensed...lots of loops
+#currently
+            
 primer_index = []           
 for i in xrange(len(perm_key)):
     permutations = perm_key[i]

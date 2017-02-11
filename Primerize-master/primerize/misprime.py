@@ -609,7 +609,7 @@ def _check_misprime_multi(sequence1, sequence2, m=6, l=20):
     misprime_score_reverse = misprime_score_mat[:,N_BP:]
     best_match_reverse = best_match_mat[:,N_BP:]
     
-    return (num_match_forward, num_match_reverse, best_match_forward, best_match_reverse, misprime_score_forward, misprime_score_reverse, subset_str, sort_idx, bpID, segmentID)
+    return (num_match_forward, num_match_reverse, best_match_forward, best_match_reverse, misprime_score_forward, misprime_score_reverse)
 
 
 """
